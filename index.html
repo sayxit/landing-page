@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Camera + Footer + Head Halo Logo</title>
+  <style>
+    html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+    #webcam, #fallback {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; background: #000;
+    }
+    .logo-top { position: fixed; top: 5px; left: 50%; transform: translateX(-50%); z-index: 3; }
+    .logo-top img { max-width: 140px; height: auto; display:block; }
+    #overlayCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+    .footer { position: fixed; left:0; right:0; bottom:14px; display:flex; justify-content:center; gap:14px; z-index:3; }
+    .footer a { width:22px; height:22px; display:block; }
+    .footer a.social img { filter: invert(1); }
+    .footer img { width:22px; height:22px; display:block; object-fit:contain; }
+    .overlay { position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.6); color:#fff; z-index:4; font:16px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .overlay.hidden { display:none; }
+    #startBtn { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:5; background:#fff; color:#000; border:0; border-radius:999px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  </style>
+
+<style id="clickfix">
+  #glcanvas, #fxcanvas, canvas.stage { pointer-events: none !important; }
+  video#webcam, video#fallback { pointer-events: none !important; }
+  .top-logo, #top-logo { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: auto !important; }
+  .top-logo a, #top-logo a { display: inline-block; }
+</style>
+
+
+<style id="overlayfix">
+  .overlay { pointer-events: none !important; }
+</style>
+
+</head>
+<body>
+  <video id="webcam" autoplay playsinline muted></video>
+  <video id="fallback" autoplay playsinline muted loop style="display:none">
+    <source src="assets/fallback.mp4" type="video/mp4" />
+  </video>
+
+  <canvas id="overlayCanvas"></canvas>
+
+  <div class="logo-top"><a href="https://sayxit.com" target="_blank" rel="noopener"><img src="assets/top_logo.png" alt="SayXit Logo"></a></a></div>
+
+  <div id="overlay" class="overlay"><div>Turn on your camera fam ✨</div></div>
+  <button id="startBtn">Start</button>
+
+  <div class="footer">
+    <a class="social" href="https://www.instagram.com/sayxit/" target="_blank" rel="noopener"><img src="assets/instagram.svg" alt="Instagram"></a>
+    <a class="social" href="https://www.tumblr.com/sayxit" target="_blank" rel="noopener"><img src="assets/tumblr.svg" alt="Tumblr"></a>
+    <a href="mailto:selim@sayxit.com" rel="noopener"><img src="assets/email.png" alt="Email"></a>
+    <a class="social" href="https://www.tiktok.com/@sayxit" target="_blank" rel="noopener"><img src="assets/tiktok.svg" alt="Tiktok"></a>
+    <a class="social" href="https://www.youtube.com/@sayxxit" target="_blank" rel="noopener"><img src="assets/youtube.svg" alt="YouTube"></a>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <script>
+  const webcam = document.getElementById('webcam');
+  const fallback = document.getElementById('fallback');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+  const ocan = document.getElementById('overlayCanvas');
+  const octx = ocan.getContext('2d');
+  const headImg = new Image(); headImg.src = 'assets/head_logo.png';
+
+  function resize(){ ocan.width = innerWidth; ocan.height = innerHeight; }
+  addEventListener('resize', resize, {passive:true}); resize();
+
+  async function startCamera(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' }, audio:false });
+      webcam.srcObject = stream; await webcam.play();
+      overlay.classList.add('hidden'); startBtn.style.display='none'; fallback.style.display='none';
+      initFace();
+    } catch(e){
+      overlay.classList.add('hidden'); startBtn.style.display='inline-block';
+      fallback.style.display='block'; try{ await fallback.play(); }catch{}
+    }
+  }
+  document.addEventListener('DOMContentLoaded', startCamera);
+  startBtn.addEventListener('click', startCamera);
+
+  // --- Breathing halo controls ---
+let __haloT0 = performance.now();
+const GLOW = {
+  BLUR_MIN: 0,
+  BLUR_MAX: 60,
+  ALPHA_MIN: 0.35,
+  ALPHA_MAX: 1.0,
+  SPEED_HZ: 0.25, // ~4s full cycle
+  CLIP_PAD_PX: 140
+};
+
+function drawHeads(lmsList){
+  octx.clearRect(0,0,ocan.width,ocan.height);
+  if(!lmsList || !lmsList.length || !headImg.complete) return;
+
+  const t = (performance.now() - __haloT0) * 0.001;
+  const s = Math.sin(t * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5; // 0..1
+  const blur  = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
+  const alpha = GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
+
+  lmsList.forEach((lm) => {
+    const L = lm[127], R = lm[356];
+    const cx = (L.x + R.x)/2;
+    const cy = Math.min(L.y, R.y);
+    const dist = Math.hypot((R.x-L.x),(R.y-L.y));
+
+    const px = cx * ocan.width;
+    const py = cy * ocan.height - (dist * ocan.height * 2.0);
+    const size = dist * ocan.width * 3.5;
+    const w = size;
+    const h = w * (headImg.height / headImg.width);
+    const x = px - w/2, y = py - h/2;
+
+    // Glow pass
+    octx.save();
+    octx.beginPath();
+    octx.rect(x - GLOW.CLIP_PAD_PX, y - GLOW.CLIP_PAD_PX, w + 2*GLOW.CLIP_PAD_PX, h + 2*GLOW.CLIP_PAD_PX);
+    octx.clip();
+    octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
+    octx.shadowBlur  = blur;
+    octx.globalAlpha = 1.0;
+    octx.drawImage(headImg, x, y, w, h);
+
+    // Core pass
+    octx.shadowBlur = 0;
+    octx.shadowColor = 'transparent';
+    octx.drawImage(headImg, x, y, w, h);
+    octx.restore();
+  });
+}
+
+  function initFace(){
+    const faceMesh = new FaceMesh({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
+    faceMesh.setOptions({ maxNumFaces: 4, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    const cam = new Camera(webcam,{ onFrame: async()=>{ await faceMesh.send({ image: webcam }); }, width: 640, height: 480 });
+    cam.start();
+    faceMesh.onResults((res)=>{
+      if(res.multiFaceLandmarks && res.multiFaceLandmarks.length){
+        drawHeads(res.multiFaceLandmarks);
+      }else{
+        octx.clearRect(0,0,ocan.width,ocan.height);
+      }
+    });
+  }
+  </script>
+</body>
+</html>
