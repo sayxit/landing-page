@@ -68,8 +68,44 @@
   const octx = ocan.getContext('2d');
   const headImg = new Image(); headImg.src = 'assets/head_logo.png';
 
-  function resize(){ ocan.width = innerWidth; ocan.height = innerHeight; }
-  addEventListener('resize', resize, {passive:true}); resize();
+  // Hi-DPI aware resize (crisper on Retina; same CSS size)
+  function resize(){
+    const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    ocan.style.width  = innerWidth + 'px';
+    ocan.style.height = innerHeight + 'px';
+    ocan.width  = Math.round(innerWidth  * DPR);
+    ocan.height = Math.round(innerHeight * DPR);
+    octx.setTransform(DPR, 0, 0, DPR, 0, 0); // draw in CSS pixels
+  }
+
+  // Responsive halo behavior (phone/tablet/desktop)
+  const HALO_CFG = {
+    liftByHeadWidth: 0.95,
+    sizeByHeadWidth: 3.50,
+    smoothPosAlpha: 0.18,
+    smoothScaleAlpha: 0.20,
+    visibilityMin: 0.50
+  };
+  function updateHaloResponsive(){
+    const shortSide = Math.min(innerWidth, innerHeight);
+    if (shortSide < 500) {           // phones
+      HALO_CFG.sizeByHeadWidth = 4.30;
+      HALO_CFG.liftByHeadWidth = 1.05;
+    } else if (shortSide < 900) {    // small tablets
+      HALO_CFG.sizeByHeadWidth = 3.90;
+      HALO_CFG.liftByHeadWidth = 1.00;
+    } else {                         // laptops/desktops
+      HALO_CFG.sizeByHeadWidth = 3.50;
+      HALO_CFG.liftByHeadWidth = 0.95;
+    }
+  }
+
+  function handleResize(){
+    resize();
+    updateHaloResponsive();
+  }
+  addEventListener('resize', handleResize, {passive:true});
+  handleResize();
 
   async function startCamera(){
     try {
@@ -85,34 +121,27 @@
   document.addEventListener('DOMContentLoaded', startCamera);
   startBtn.addEventListener('click', startCamera);
 
-  // --- Breathing halo controls (unchanged) ---
+  // Breathing halo controls (4s cycle unchanged)
   let __haloT0 = performance.now();
   const GLOW = {
     BLUR_MIN: 0,
     BLUR_MAX: 60,
     ALPHA_MIN: 0.35,
     ALPHA_MAX: 1.0,
-    SPEED_HZ: 0.25, // ~4s full cycle
+    SPEED_HZ: 0.25,
     CLIP_PAD_PX: 140
   };
 
-  // --- New: stable placement + anti-jitter ---
-  const HALO_CFG = {
-    liftByHeadWidth: 0.95,   // raise halo by this * head-width
-    sizeByHeadWidth: 3.50,   // halo size = this * head-width
-    smoothPosAlpha: 0.18,    // 0..1 (lower = steadier, slower)
-    smoothScaleAlpha: 0.20,
-    visibilityMin: 0.50      // ignore low-confidence frames
-  };
+  // Anti-jitter + smoothing state
   const haloState = { x:null, y:null, w:null, h:null, scale:null };
   const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
-  const px = v => Math.round(v); // snap to full pixels to avoid shimmer
+  const px = v => Math.round(v); // snap to integers to reduce shimmer
 
   function drawHeads(lmsList){
     octx.clearRect(0,0,ocan.width,ocan.height);
     if(!lmsList || !lmsList.length || !headImg.complete) return;
 
-    // Choose the face closest to screen center (stable on multi-face)
+    // Choose face closest to center
     let best = lmsList[0];
     if (lmsList.length > 1) {
       const cx = 0.5, cy = 0.5;
@@ -125,23 +154,23 @@
       }
     }
 
-    // Confidence gate (prevents sudden jumps)
+    // Confidence gate
     if (best[10].visibility !== undefined && best[10].visibility < HALO_CFG.visibilityMin) return;
 
-    // Robust head width from temples (127..356). Fallback to eye width if needed.
+    // Scale from temples; fallback to eye width
     const L = best[127], R = best[356];
     const eyeL = best[33], eyeR = best[263];
-    const headW = Math.hypot((R.x - L.x) * ocan.width, (R.y - L.y) * ocan.height);
-    const eyeW  = Math.hypot((eyeR.x - eyeL.x) * ocan.width, (eyeR.y - eyeL.y) * ocan.height);
+    const headW = Math.hypot((R.x - L.x) * innerWidth, (R.y - L.y) * innerHeight);
+    const eyeW  = Math.hypot((eyeR.x - eyeL.x) * innerWidth, (eyeR.y - eyeL.y) * innerHeight);
     const baseScale = headW > 0 ? headW : eyeW;
 
-    // Anchor near forehead (nose bridge top blended with brow)
+    // Forehead anchor (nose bridge top blended with brow)
     const noseTop = best[10];
     const browMid = best[151] || best[9];
-    const ax = ((noseTop.x + browMid.x) * 0.5) * ocan.width;
-    const ay = (Math.min(noseTop.y, browMid.y)) * ocan.height;
+    const ax = ((noseTop.x + browMid.x) * 0.5) * innerWidth;
+    const ay = (Math.min(noseTop.y, browMid.y)) * innerHeight;
 
-    // Desired lift/size based on head width (device-agnostic)
+    // Target geometry (device-agnostic via head width)
     const lift = HALO_CFG.liftByHeadWidth * baseScale;
     const size = HALO_CFG.sizeByHeadWidth * baseScale;
 
@@ -157,16 +186,16 @@
     haloState.x = lerp(haloState.x, tx, HALO_CFG.smoothPosAlpha);
     haloState.y = lerp(haloState.y, ty, HALO_CFG.smoothPosAlpha);
 
-    // Breathing glow (same as before)
+    // Breathing glow
     const t = (performance.now() - __haloT0) * 0.001;
     const s = Math.sin(t * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
     const blur  = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
     const alpha = GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
 
-    // Pixel-snapped rectangle reduces shimmer
+    // Snap to pixels to reduce shimmer
     const X = px(haloState.x), Y = px(haloState.y), W = px(haloState.w), H = px(haloState.h);
 
-    // Glow pass (locally clipped so it won’t wash the whole frame)
+    // Glow (locally clipped)
     octx.save();
     octx.beginPath();
     const pad = GLOW.CLIP_PAD_PX;
@@ -177,7 +206,7 @@
     octx.globalAlpha = 1.0;
     octx.drawImage(headImg, X, Y, W, H);
 
-    // Core pass (crisp)
+    // Core
     octx.shadowBlur = 0;
     octx.shadowColor = 'transparent';
     octx.drawImage(headImg, X, Y, W, H);
@@ -200,3 +229,4 @@
   </script>
 </body>
 </html>
+
