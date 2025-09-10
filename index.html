@@ -24,18 +24,16 @@
     #startBtn { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:5; background:#fff; color:#000; border:0; border-radius:999px; padding:10px 16px; font-weight:600; cursor:pointer; }
   </style>
 
-<style id="clickfix">
-  #glcanvas, #fxcanvas, canvas.stage { pointer-events: none !important; }
-  video#webcam, video#fallback { pointer-events: none !important; }
-  .top-logo, #top-logo { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: auto !important; }
-  .top-logo a, #top-logo a { display: inline-block; }
-</style>
+  <style id="clickfix">
+    #glcanvas, #fxcanvas, canvas.stage { pointer-events: none !important; }
+    video#webcam, video#fallback { pointer-events: none !important; }
+    .top-logo, #top-logo { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: auto !important; }
+    .top-logo a, #top-logo a { display: inline-block; }
+  </style>
 
-
-<style id="overlayfix">
-  .overlay { pointer-events: none !important; }
-</style>
-
+  <style id="overlayfix">
+    .overlay { pointer-events: none !important; }
+  </style>
 </head>
 <body>
   <video id="webcam" autoplay playsinline muted></video>
@@ -45,7 +43,7 @@
 
   <canvas id="overlayCanvas"></canvas>
 
-  <div class="logo-top"><a href="https://sayxit.com" target="_blank" rel="noopener"><img src="assets/top_logo.png" alt="SayXit Logo"></a></a></div>
+  <div class="logo-top"><a href="https://sayxit.com" target="_blank" rel="noopener"><img src="assets/top_logo.png" alt="SayXit Logo"></a></div>
 
   <div id="overlay" class="overlay"><div>Turn on your camera fam ✨</div></div>
   <button id="startBtn">Start</button>
@@ -87,56 +85,104 @@
   document.addEventListener('DOMContentLoaded', startCamera);
   startBtn.addEventListener('click', startCamera);
 
-  // --- Breathing halo controls ---
-let __haloT0 = performance.now();
-const GLOW = {
-  BLUR_MIN: 0,
-  BLUR_MAX: 60,
-  ALPHA_MIN: 0.35,
-  ALPHA_MAX: 1.0,
-  SPEED_HZ: 0.25, // ~4s full cycle
-  CLIP_PAD_PX: 140
-};
+  // --- Breathing halo controls (unchanged) ---
+  let __haloT0 = performance.now();
+  const GLOW = {
+    BLUR_MIN: 0,
+    BLUR_MAX: 60,
+    ALPHA_MIN: 0.35,
+    ALPHA_MAX: 1.0,
+    SPEED_HZ: 0.25, // ~4s full cycle
+    CLIP_PAD_PX: 140
+  };
 
-function drawHeads(lmsList){
-  octx.clearRect(0,0,ocan.width,ocan.height);
-  if(!lmsList || !lmsList.length || !headImg.complete) return;
+  // --- New: stable placement + anti-jitter ---
+  const HALO_CFG = {
+    liftByHeadWidth: 0.95,   // raise halo by this * head-width
+    sizeByHeadWidth: 3.50,   // halo size = this * head-width
+    smoothPosAlpha: 0.18,    // 0..1 (lower = steadier, slower)
+    smoothScaleAlpha: 0.20,
+    visibilityMin: 0.50      // ignore low-confidence frames
+  };
+  const haloState = { x:null, y:null, w:null, h:null, scale:null };
+  const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
+  const px = v => Math.round(v); // snap to full pixels to avoid shimmer
 
-  const t = (performance.now() - __haloT0) * 0.001;
-  const s = Math.sin(t * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5; // 0..1
-  const blur  = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
-  const alpha = GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
+  function drawHeads(lmsList){
+    octx.clearRect(0,0,ocan.width,ocan.height);
+    if(!lmsList || !lmsList.length || !headImg.complete) return;
 
-  lmsList.forEach((lm) => {
-    const L = lm[127], R = lm[356];
-    const cx = (L.x + R.x)/2;
-    const cy = Math.min(L.y, R.y);
-    const dist = Math.hypot((R.x-L.x),(R.y-L.y));
+    // Choose the face closest to screen center (stable on multi-face)
+    let best = lmsList[0];
+    if (lmsList.length > 1) {
+      const cx = 0.5, cy = 0.5;
+      let bestD = 9e9;
+      for (const lm of lmsList) {
+        const tL = lm[127], tR = lm[356];
+        const mx = (tL.x + tR.x) * 0.5, my = (tL.y + tR.y) * 0.5;
+        const d = (mx - cx) * (mx - cx) + (my - cy) * (my - cy);
+        if (d < bestD) { bestD = d; best = lm; }
+      }
+    }
 
-    const px = cx * ocan.width;
-    const py = cy * ocan.height - (dist * ocan.height * 2.0);
-    const size = dist * ocan.width * 3.5;
-    const w = size;
-    const h = w * (headImg.height / headImg.width);
-    const x = px - w/2, y = py - h/2;
+    // Confidence gate (prevents sudden jumps)
+    if (best[10].visibility !== undefined && best[10].visibility < HALO_CFG.visibilityMin) return;
 
-    // Glow pass
+    // Robust head width from temples (127..356). Fallback to eye width if needed.
+    const L = best[127], R = best[356];
+    const eyeL = best[33], eyeR = best[263];
+    const headW = Math.hypot((R.x - L.x) * ocan.width, (R.y - L.y) * ocan.height);
+    const eyeW  = Math.hypot((eyeR.x - eyeL.x) * ocan.width, (eyeR.y - eyeL.y) * ocan.height);
+    const baseScale = headW > 0 ? headW : eyeW;
+
+    // Anchor near forehead (nose bridge top blended with brow)
+    const noseTop = best[10];
+    const browMid = best[151] || best[9];
+    const ax = ((noseTop.x + browMid.x) * 0.5) * ocan.width;
+    const ay = (Math.min(noseTop.y, browMid.y)) * ocan.height;
+
+    // Desired lift/size based on head width (device-agnostic)
+    const lift = HALO_CFG.liftByHeadWidth * baseScale;
+    const size = HALO_CFG.sizeByHeadWidth * baseScale;
+
+    const tw = size;
+    const th = tw * (headImg.height / headImg.width);
+    const tx = ax - tw / 2;
+    const ty = (ay - lift) - th / 2;
+
+    // Smooth state
+    haloState.scale = lerp(haloState.scale, baseScale, HALO_CFG.smoothScaleAlpha);
+    haloState.w = lerp(haloState.w, tw, HALO_CFG.smoothScaleAlpha);
+    haloState.h = lerp(haloState.h, th, HALO_CFG.smoothScaleAlpha);
+    haloState.x = lerp(haloState.x, tx, HALO_CFG.smoothPosAlpha);
+    haloState.y = lerp(haloState.y, ty, HALO_CFG.smoothPosAlpha);
+
+    // Breathing glow (same as before)
+    const t = (performance.now() - __haloT0) * 0.001;
+    const s = Math.sin(t * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
+    const blur  = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
+    const alpha = GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
+
+    // Pixel-snapped rectangle reduces shimmer
+    const X = px(haloState.x), Y = px(haloState.y), W = px(haloState.w), H = px(haloState.h);
+
+    // Glow pass (locally clipped so it won’t wash the whole frame)
     octx.save();
     octx.beginPath();
-    octx.rect(x - GLOW.CLIP_PAD_PX, y - GLOW.CLIP_PAD_PX, w + 2*GLOW.CLIP_PAD_PX, h + 2*GLOW.CLIP_PAD_PX);
+    const pad = GLOW.CLIP_PAD_PX;
+    octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
     octx.clip();
     octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
     octx.shadowBlur  = blur;
     octx.globalAlpha = 1.0;
-    octx.drawImage(headImg, x, y, w, h);
+    octx.drawImage(headImg, X, Y, W, H);
 
-    // Core pass
+    // Core pass (crisp)
     octx.shadowBlur = 0;
     octx.shadowColor = 'transparent';
-    octx.drawImage(headImg, x, y, w, h);
+    octx.drawImage(headImg, X, Y, W, H);
     octx.restore();
-  });
-}
+  }
 
   function initFace(){
     const faceMesh = new FaceMesh({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
