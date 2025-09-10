@@ -84,7 +84,7 @@
     sizeByHeadWidth: 3.50,
     smoothPosAlpha: 0.18,
     smoothScaleAlpha: 0.20,
-    visibilityMin: 0.50
+    visibilityMin: 0.35 // lowered to keep smaller/farther faces
   };
   function updateHaloResponsive(){
     const shortSide = Math.min(innerWidth, innerHeight);
@@ -109,7 +109,11 @@
 
   async function startCamera(){
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' }, audio:false });
+      // HD constraints -> better small-face detection
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
+        audio:false
+      });
       webcam.srcObject = stream; await webcam.play();
       overlay.classList.add('hidden'); startBtn.style.display='none'; fallback.style.display='none';
       initFace();
@@ -132,91 +136,140 @@
     CLIP_PAD_PX: 140
   };
 
-  // Anti-jitter + smoothing state
-  const haloState = { x:null, y:null, w:null, h:null, scale:null };
+  // --- Multi-face tracking (EMA per face) ---
+  const HALO_MAX_FACES = 8;                  // draw up to 8 halos
+  function matchRadiusPx(){ return Math.max(220, Math.min(innerWidth, innerHeight) * 0.08); }
+  const TRACK_TTL_MS   = 450;
+  let haloTracks = []; // [{x,y,w,h,scale,lastSeen,ax,ay}]
+  const nowMs = () => performance.now();
+
+  function matchTrack(ax, ay){
+    const R = matchRadiusPx();
+    let best=null, bestD=1e9, bestIdx=-1;
+    for (let i=0;i<haloTracks.length;i++){
+      const tr = haloTracks[i];
+      const d = Math.hypot(tr.ax - ax, tr.ay - ay);
+      if (d < bestD && d <= R) { bestD = d; best = tr; bestIdx = i; }
+    }
+    return { track: best, index: bestIdx };
+  }
+  function pruneTracks(){
+    const t = nowMs();
+    haloTracks = haloTracks.filter(tr => (t - tr.lastSeen) < TRACK_TTL_MS);
+  }
+
   const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
-  const px = v => Math.round(v); // snap to integers to reduce shimmer
+  const px   = v => Math.round(v); // snap to integers to reduce shimmer
 
   function drawHeads(lmsList){
     octx.clearRect(0,0,ocan.width,ocan.height);
-    if(!lmsList || !lmsList.length || !headImg.complete) return;
+    if(!lmsList || !lmsList.length || !headImg.complete) { pruneTracks(); return; }
 
-    // Choose face closest to center
-    let best = lmsList[0];
-    if (lmsList.length > 1) {
-      const cx = 0.5, cy = 0.5;
-      let bestD = 9e9;
-      for (const lm of lmsList) {
-        const tL = lm[127], tR = lm[356];
-        const mx = (tL.x + tR.x) * 0.5, my = (tL.y + tR.y) * 0.5;
-        const d = (mx - cx) * (mx - cx) + (my - cy) * (my - cy);
-        if (d < bestD) { bestD = d; best = lm; }
+    // Breathing glow (shared by all halos)
+    const tNow = (performance.now() - __haloT0) * 0.001;
+    const s    = Math.sin(tNow * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
+    const blur = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
+    const alpha= GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
+
+    // Sort faces by apparent size (largest first) and clamp
+    const faces = lmsList
+      .map(lm => {
+        const L = lm[127], R = lm[356];
+        const headW = Math.hypot((R.x - L.x)*innerWidth, (R.y - L.y)*innerHeight);
+        return { lm, headW };
+      })
+      .sort((a,b)=>b.headW - a.headW)
+      .slice(0, HALO_MAX_FACES);
+
+    faces.forEach(({lm})=>{
+      // Confidence gate
+      if (lm[10].visibility !== undefined && lm[10].visibility < HALO_CFG.visibilityMin) return;
+
+      // Head width from temples; eyes as fallback
+      const L = lm[127], R = lm[356];
+      const eyeL = lm[33], eyeR = lm[263];
+      const headW = Math.hypot((R.x - L.x) * innerWidth, (R.y - L.y) * innerHeight);
+      const eyeW  = Math.hypot((eyeR.x - eyeL.x) * innerWidth, (eyeR.y - eyeL.y) * innerHeight);
+      const baseScale = headW > 0 ? headW : eyeW;
+
+      // Anchor near forehead (nose bridge top blended with brow)
+      const noseTop = lm[10];
+      const browMid = lm[151] || lm[9];
+      const ax = ((noseTop.x + browMid.x) * 0.5) * innerWidth;
+      const ay = (Math.min(noseTop.y, browMid.y)) * innerHeight;
+
+      // Boost for small/distant faces so halo reads clearly
+      const SMALL_FACE_PX = 120;
+      const boost = Math.min(1.8, Math.max(1.0, SMALL_FACE_PX / Math.max(1, baseScale)));
+
+      // Target geometry (device-agnostic via head width, with boost)
+      const size = HALO_CFG.sizeByHeadWidth * baseScale * boost;
+      const lift = HALO_CFG.liftByHeadWidth * baseScale * (0.9 + 0.1 * boost);
+
+      const tw = size;
+      const th = tw * (headImg.height / headImg.width);
+      const tx = ax - tw / 2;
+      const ty = (ay - lift) - th / 2;
+
+      // Match or create a track, with adaptive smoothing for small faces
+      const {track} = matchTrack(ax, ay);
+      const posA   = baseScale < SMALL_FACE_PX ? HALO_CFG.smoothPosAlpha   * 0.7 : HALO_CFG.smoothPosAlpha;
+      const scaleA = baseScale < SMALL_FACE_PX ? HALO_CFG.smoothScaleAlpha * 0.7 : HALO_CFG.smoothScaleAlpha;
+
+      let tr = track;
+      if (!tr) {
+        tr = { x:tx, y:ty, w:tw, h:th, scale:baseScale, lastSeen:nowMs(), ax, ay };
+        haloTracks.push(tr);
+        if (haloTracks.length > HALO_MAX_FACES) haloTracks.shift();
+      } else {
+        tr.scale = lerp(tr.scale, baseScale, scaleA);
+        tr.w     = lerp(tr.w, tw,       scaleA);
+        tr.h     = lerp(tr.h, th,       scaleA);
+        tr.x     = lerp(tr.x, tx,       posA);
+        tr.y     = lerp(tr.y, ty,       posA);
+        tr.ax    = lerp(tr.ax, ax,      posA);
+        tr.ay    = lerp(tr.ay, ay,      posA);
+        tr.lastSeen = nowMs();
       }
-    }
 
-    // Confidence gate
-    if (best[10].visibility !== undefined && best[10].visibility < HALO_CFG.visibilityMin) return;
+      // Pixel snap to reduce shimmer
+      const X = px(tr.x), Y = px(tr.y), W = px(tr.w), H = px(tr.h);
 
-    // Scale from temples; fallback to eye width
-    const L = best[127], R = best[356];
-    const eyeL = best[33], eyeR = best[263];
-    const headW = Math.hypot((R.x - L.x) * innerWidth, (R.y - L.y) * innerHeight);
-    const eyeW  = Math.hypot((eyeR.x - eyeL.x) * innerWidth, (eyeR.y - eyeL.y) * innerHeight);
-    const baseScale = headW > 0 ? headW : eyeW;
+      // Draw with local clip (glow contained)
+      octx.save();
+      octx.beginPath();
+      const pad = GLOW.CLIP_PAD_PX;
+      octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
+      octx.clip();
 
-    // Forehead anchor (nose bridge top blended with brow)
-    const noseTop = best[10];
-    const browMid = best[151] || best[9];
-    const ax = ((noseTop.x + browMid.x) * 0.5) * innerWidth;
-    const ay = (Math.min(noseTop.y, browMid.y)) * innerHeight;
+      // Glow
+      octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      octx.shadowBlur  = blur;
+      octx.globalAlpha = 1.0;
+      octx.drawImage(headImg, X, Y, W, H);
 
-    // Target geometry (device-agnostic via head width)
-    const lift = HALO_CFG.liftByHeadWidth * baseScale;
-    const size = HALO_CFG.sizeByHeadWidth * baseScale;
+      // Core
+      octx.shadowBlur = 0;
+      octx.shadowColor = 'transparent';
+      octx.drawImage(headImg, X, Y, W, H);
+      octx.restore();
+    });
 
-    const tw = size;
-    const th = tw * (headImg.height / headImg.width);
-    const tx = ax - tw / 2;
-    const ty = (ay - lift) - th / 2;
-
-    // Smooth state
-    haloState.scale = lerp(haloState.scale, baseScale, HALO_CFG.smoothScaleAlpha);
-    haloState.w = lerp(haloState.w, tw, HALO_CFG.smoothScaleAlpha);
-    haloState.h = lerp(haloState.h, th, HALO_CFG.smoothScaleAlpha);
-    haloState.x = lerp(haloState.x, tx, HALO_CFG.smoothPosAlpha);
-    haloState.y = lerp(haloState.y, ty, HALO_CFG.smoothPosAlpha);
-
-    // Breathing glow
-    const t = (performance.now() - __haloT0) * 0.001;
-    const s = Math.sin(t * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
-    const blur  = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
-    const alpha = GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
-
-    // Snap to pixels to reduce shimmer
-    const X = px(haloState.x), Y = px(haloState.y), W = px(haloState.w), H = px(haloState.h);
-
-    // Glow (locally clipped)
-    octx.save();
-    octx.beginPath();
-    const pad = GLOW.CLIP_PAD_PX;
-    octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
-    octx.clip();
-    octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
-    octx.shadowBlur  = blur;
-    octx.globalAlpha = 1.0;
-    octx.drawImage(headImg, X, Y, W, H);
-
-    // Core
-    octx.shadowBlur = 0;
-    octx.shadowColor = 'transparent';
-    octx.drawImage(headImg, X, Y, W, H);
-    octx.restore();
+    pruneTracks();
   }
 
   function initFace(){
     const faceMesh = new FaceMesh({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
-    faceMesh.setOptions({ maxNumFaces: 4, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    const cam = new Camera(webcam,{ onFrame: async()=>{ await faceMesh.send({ image: webcam }); }, width: 640, height: 480 });
+    faceMesh.setOptions({
+      maxNumFaces: 8,               // more faces
+      refineLandmarks: true,
+      minDetectionConfidence: 0.30, // more permissive for small faces
+      minTrackingConfidence: 0.40
+    });
+    const cam = new Camera(webcam,{
+      onFrame: async()=>{ await faceMesh.send({ image: webcam }); },
+      width: 1280, height: 720
+    });
     cam.start();
     faceMesh.onResults((res)=>{
       if(res.multiFaceLandmarks && res.multiFaceLandmarks.length){
@@ -229,4 +282,5 @@
   </script>
 </body>
 </html>
+
 
