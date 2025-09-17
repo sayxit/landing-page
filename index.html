@@ -4,51 +4,54 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>sayxit</title>
-  
-<!-- Dark/Light SVG favicons -->
-<link rel="icon" type="image/svg+xml" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/svg+xml" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
 
-<!-- PNG fallbacks -->
-<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-dark-32.png" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-light-32.png" media="(prefers-color-scheme: dark)">
+  <!-- Dark/Light SVG favicons -->
+  <link rel="icon" type="image/svg+xml" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
 
-<link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-dark-192.png" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-light-192.png" media="(prefers-color-scheme: dark)">
+  <!-- PNG fallbacks -->
+  <link rel="icon" type="image/png" sizes="32x32"  href="assets/favicon-dark-32.png"  media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="32x32"  href="assets/favicon-light-32.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-dark-192.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-light-192.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-dark-512.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-light-512.png" media="(prefers-color-scheme: dark)">
 
-<link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-dark-512.png" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-light-512.png" media="(prefers-color-scheme: dark)">
+  <!-- iOS home screen icons -->
+  <link rel="apple-touch-icon" href="assets/apple-dark-180.png"  media="(prefers-color-scheme: light)">
+  <link rel="apple-touch-icon" href="assets/apple-light-180.png" media="(prefers-color-scheme: dark)">
 
-<!-- iOS home screen icons -->
-<link rel="apple-touch-icon" href="assets/apple-dark-180.png" media="(prefers-color-scheme: light)">
-<link rel="apple-touch-icon" href="assets/apple-light-180.png" media="(prefers-color-scheme: dark)">
-
-  <link rel="icon" type="image/png" href="assets/favicon.png">
   <style>
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+
+    /* Video & fallback fill screen */
     #webcam, #fallback {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover; background: #000;
     }
 
-  #overlayCanvas {
-  transform: scaleX(-1);
-}
-    #overlayCanvas {
-  transform: scaleX(-1); 
-}
+    /* Make the live camera SELFIE (mirrored) */
+    #webcam { transform: scaleX(-1); }
 
-#fallback {
-  transform: scaleX(-1);   
-}
+    /* Keep fallback video mirrored too for consistency */
+    #fallback { transform: scaleX(-1); }
+
+    /* Canvas sits on top and is mirrored so tracking matches selfie movement */
+    #overlayCanvas {
+      position:absolute; inset:0; width:100%; height:100%;
+      pointer-events:none; z-index:2;
+      transform: scaleX(-1);
+    }
+
     .logo-top { position: fixed; top: 5px; left: 50%; transform: translateX(-50%); z-index: 3; }
     .logo-top img { max-width: 140px; height: auto; display:block; }
-    #overlayCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+
     .footer { position: fixed; left:0; right:0; bottom:14px; display:flex; justify-content:center; gap:14px; z-index:3; }
     .footer a { width:22px; height:22px; display:block; }
     .footer a.social img { filter: invert(1); }
     .footer img { width:22px; height:22px; display:block; object-fit:contain; }
+
     .overlay { position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.6); color:#fff; z-index:4; font:16px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
     .overlay.hidden { display:none; }
     #startBtn { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:5; background:#fff; color:#000; border:0; border-radius:999px; padding:10px 16px; font-weight:600; cursor:pointer; }
@@ -73,7 +76,11 @@
 
   <canvas id="overlayCanvas"></canvas>
 
-  <div class="logo-top"><a href="https://sayxit.com" target="_blank" rel="noopener"><img src="assets/top_logo.png" alt="SayXit Logo"></a></div>
+  <div class="logo-top">
+    <a href="https://sayxit.com" target="_blank" rel="noopener">
+      <img src="assets/top_logo.png" alt="SayXit Logo">
+    </a>
+  </div>
 
   <div id="overlay" class="overlay"><div>Turn on your camera fam ✨</div></div>
   <button id="startBtn">Start</button>
@@ -90,12 +97,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <script>
-  const webcam = document.getElementById('webcam');
-  const fallback = document.getElementById('fallback');
+  const webcam  = document.getElementById('webcam');
+  const fallback= document.getElementById('fallback');
   const overlay = document.getElementById('overlay');
-  const startBtn = document.getElementById('startBtn');
-  const ocan = document.getElementById('overlayCanvas');
-  const octx = ocan.getContext('2d');
+  const startBtn= document.getElementById('startBtn');
+  const ocan    = document.getElementById('overlayCanvas');
+  const octx    = ocan.getContext('2d');
   const headImg = new Image(); headImg.src = 'assets/head_logo.png';
 
   // Hi-DPI aware resize (crisper on Retina; same CSS size)
@@ -114,7 +121,7 @@
     sizeByHeadWidth: 3.50,
     smoothPosAlpha: 0.18,
     smoothScaleAlpha: 0.20,
-    visibilityMin: 0.35 // lowered to keep smaller/farther faces
+    visibilityMin: 0.35
   };
   function updateHaloResponsive(){
     const shortSide = Math.min(innerWidth, innerHeight);
@@ -130,16 +137,12 @@
     }
   }
 
-  function handleResize(){
-    resize();
-    updateHaloResponsive();
-  }
+  function handleResize(){ resize(); updateHaloResponsive(); }
   addEventListener('resize', handleResize, {passive:true});
   handleResize();
 
   async function startCamera(){
     try {
-      // HD constraints -> better small-face detection
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
         audio:false
@@ -155,7 +158,7 @@
   document.addEventListener('DOMContentLoaded', startCamera);
   startBtn.addEventListener('click', startCamera);
 
-  // Breathing halo controls (4s cycle unchanged)
+  // Breathing halo controls (4s cycle)
   let __haloT0 = performance.now();
   const GLOW = {
     BLUR_MIN: 0,
@@ -166,11 +169,11 @@
     CLIP_PAD_PX: 140
   };
 
-  // --- Multi-face tracking (EMA per face) ---
-  const HALO_MAX_FACES = 8;                  // draw up to 8 halos
+  // Multi-face tracking
+  const HALO_MAX_FACES = 8;
   function matchRadiusPx(){ return Math.max(220, Math.min(innerWidth, innerHeight) * 0.08); }
   const TRACK_TTL_MS   = 450;
-  let haloTracks = []; // [{x,y,w,h,scale,lastSeen,ax,ay}]
+  let haloTracks = [];
   const nowMs = () => performance.now();
 
   function matchTrack(ax, ay){
@@ -189,19 +192,19 @@
   }
 
   const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
-  const px   = v => Math.round(v); // snap to integers to reduce shimmer
+  const px   = v => Math.round(v);
 
   function drawHeads(lmsList){
     octx.clearRect(0,0,ocan.width,ocan.height);
     if(!lmsList || !lmsList.length || !headImg.complete) { pruneTracks(); return; }
 
-    // Breathing glow (shared by all halos)
+    // Breathing glow
     const tNow = (performance.now() - __haloT0) * 0.001;
     const s    = Math.sin(tNow * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
     const blur = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
     const alpha= GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
 
-    // Sort faces by apparent size (largest first) and clamp
+    // Sort faces by apparent size
     const faces = lmsList
       .map(lm => {
         const L = lm[127], R = lm[356];
@@ -212,27 +215,22 @@
       .slice(0, HALO_MAX_FACES);
 
     faces.forEach(({lm})=>{
-      // Confidence gate
       if (lm[10].visibility !== undefined && lm[10].visibility < HALO_CFG.visibilityMin) return;
 
-      // Head width from temples; eyes as fallback
       const L = lm[127], R = lm[356];
       const eyeL = lm[33], eyeR = lm[263];
       const headW = Math.hypot((R.x - L.x) * innerWidth, (R.y - L.y) * innerHeight);
       const eyeW  = Math.hypot((eyeR.x - eyeL.x) * innerWidth, (eyeR.y - eyeL.y) * innerHeight);
       const baseScale = headW > 0 ? headW : eyeW;
 
-      // Anchor near forehead (nose bridge top blended with brow)
       const noseTop = lm[10];
       const browMid = lm[151] || lm[9];
       const ax = ((noseTop.x + browMid.x) * 0.5) * innerWidth;
       const ay = (Math.min(noseTop.y, browMid.y)) * innerHeight;
 
-      // Boost for small/distant faces so halo reads clearly
       const SMALL_FACE_PX = 120;
       const boost = Math.min(1.8, Math.max(1.0, SMALL_FACE_PX / Math.max(1, baseScale)));
 
-      // Target geometry (device-agnostic via head width, with boost)
       const size = HALO_CFG.sizeByHeadWidth * baseScale * boost;
       const lift = HALO_CFG.liftByHeadWidth * baseScale * (0.9 + 0.1 * boost);
 
@@ -241,7 +239,6 @@
       const tx = ax - tw / 2;
       const ty = (ay - lift) - th / 2;
 
-      // Match or create a track, with adaptive smoothing for small faces
       const {track} = matchTrack(ax, ay);
       const posA   = baseScale < SMALL_FACE_PX ? HALO_CFG.smoothPosAlpha   * 0.7 : HALO_CFG.smoothPosAlpha;
       const scaleA = baseScale < SMALL_FACE_PX ? HALO_CFG.smoothScaleAlpha * 0.7 : HALO_CFG.smoothScaleAlpha;
@@ -262,27 +259,34 @@
         tr.lastSeen = nowMs();
       }
 
-      // Pixel snap to reduce shimmer
       const X = px(tr.x), Y = px(tr.y), W = px(tr.w), H = px(tr.h);
 
-      // Draw with local clip (glow contained)
+      // --- Draw with counter-mirror so the logo itself is NOT flipped ---
+      // Canvas element is mirrored via CSS, so we flip the sprite back.
       octx.save();
-      octx.beginPath();
+      // local clip (keeps glow contained)
       const pad = GLOW.CLIP_PAD_PX;
+      octx.beginPath();
       octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
       octx.clip();
 
-      // Glow
+      // Move to image center, flip X, then draw centered
+      octx.translate(X + W/2, 0);
+      octx.scale(-1, 1);
+
+      // Glow pass
       octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
       octx.shadowBlur  = blur;
       octx.globalAlpha = 1.0;
-      octx.drawImage(headImg, X, Y, W, H);
+      octx.drawImage(headImg, -W/2, Y, W, H);
 
-      // Core
+      // Core pass
       octx.shadowBlur = 0;
       octx.shadowColor = 'transparent';
-      octx.drawImage(headImg, X, Y, W, H);
+      octx.drawImage(headImg, -W/2, Y, W, H);
+
       octx.restore();
+      // --- end counter-mirror block ---
     });
 
     pruneTracks();
@@ -291,9 +295,9 @@
   function initFace(){
     const faceMesh = new FaceMesh({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
     faceMesh.setOptions({
-      maxNumFaces: 8,               // more faces
+      maxNumFaces: 8,
       refineLandmarks: true,
-      minDetectionConfidence: 0.30, // more permissive for small faces
+      minDetectionConfidence: 0.30,
       minTrackingConfidence: 0.40
     });
     const cam = new Camera(webcam,{
@@ -310,6 +314,9 @@
     });
   }
   </script>
+</body>
+</html>
+
 </body>
 </html>
 
