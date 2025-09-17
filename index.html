@@ -24,24 +24,19 @@
   <style>
     html, body { margin:0; height:100%; background:#000; overflow:hidden; }
 
-    /* Video & fallback fill screen */
-    #webcam, #fallback {
+    /* Video fills screen (hidden in mouse mode) */
+    #webcam {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover; background: #000;
+      transform: scaleX(-1); /* selfie */
     }
 
-    /* Make the live camera SELFIE (mirrored) */
-    #webcam { transform: scaleX(-1); }
-
-    /* Keep fallback video mirrored too for consistency */
-    #fallback { transform: scaleX(-1); }
-
-    /* Canvas sits on top and is mirrored so tracking matches selfie movement */
+    /* Canvas on top; mirrored in camera mode, un-mirrored in mouse mode (we toggle via JS) */
     #overlayCanvas {
       position:absolute; inset:0; width:100%; height:100%;
       pointer-events:none; z-index:2;
-      transform: scaleX(-1);
+      transform: scaleX(-1); /* default: mirror to match selfie video */
     }
 
     .logo-top { position: fixed; top: 5px; left: 50%; transform: translateX(-50%); z-index: 3; }
@@ -59,7 +54,7 @@
 
   <style id="clickfix">
     #glcanvas, #fxcanvas, canvas.stage { pointer-events: none !important; }
-    video#webcam, video#fallback { pointer-events: none !important; }
+    video#webcam { pointer-events: none !important; }
     .top-logo, #top-logo { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: auto !important; }
     .top-logo a, #top-logo a { display: inline-block; }
   </style>
@@ -70,9 +65,6 @@
 </head>
 <body>
   <video id="webcam" autoplay playsinline muted></video>
-  <video id="fallback" autoplay playsinline muted loop style="display:none">
-    <source src="assets/fallback.mp4" type="video/mp4" />
-  </video>
 
   <canvas id="overlayCanvas"></canvas>
 
@@ -98,14 +90,13 @@
 
   <script>
   const webcam  = document.getElementById('webcam');
-  const fallback= document.getElementById('fallback');
   const overlay = document.getElementById('overlay');
   const startBtn= document.getElementById('startBtn');
   const ocan    = document.getElementById('overlayCanvas');
   const octx    = ocan.getContext('2d');
   const headImg = new Image(); headImg.src = 'assets/head_logo.png';
 
-  // Hi-DPI aware resize (crisper on Retina; same CSS size)
+  // Hi-DPI aware resize
   function resize(){
     const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     ocan.style.width  = innerWidth + 'px';
@@ -115,7 +106,7 @@
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); // draw in CSS pixels
   }
 
-  // Responsive halo behavior (phone/tablet/desktop)
+  // Responsive halo
   const HALO_CFG = {
     liftByHeadWidth: 0.95,
     sizeByHeadWidth: 3.50,
@@ -125,13 +116,13 @@
   };
   function updateHaloResponsive(){
     const shortSide = Math.min(innerWidth, innerHeight);
-    if (shortSide < 500) {           // phones
+    if (shortSide < 500) {
       HALO_CFG.sizeByHeadWidth = 4.30;
       HALO_CFG.liftByHeadWidth = 1.05;
-    } else if (shortSide < 900) {    // small tablets
+    } else if (shortSide < 900) {
       HALO_CFG.sizeByHeadWidth = 3.90;
       HALO_CFG.liftByHeadWidth = 1.00;
-    } else {                         // laptops/desktops
+    } else {
       HALO_CFG.sizeByHeadWidth = 3.50;
       HALO_CFG.liftByHeadWidth = 0.95;
     }
@@ -141,24 +132,23 @@
   addEventListener('resize', handleResize, {passive:true});
   handleResize();
 
-  async function startCamera(){
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
-        audio:false
-      });
-      webcam.srcObject = stream; await webcam.play();
-      overlay.classList.add('hidden'); startBtn.style.display='none'; fallback.style.display='none';
-      initFace();
-    } catch(e){
-      overlay.classList.add('hidden'); startBtn.style.display='inline-block';
-      fallback.style.display='block'; try{ await fallback.play(); }catch{}
-    }
-  }
-  document.addEventListener('DOMContentLoaded', startCamera);
-  startBtn.addEventListener('click', startCamera);
+  // Mouse-mode state (when camera denied)
+  let MOUSE_MODE = false;
+  let mouseX = innerWidth / 2, mouseY = innerHeight / 2;
+  let haloX = mouseX, haloY = mouseY;
+  const MOUSE_EASE = 0.15;
+  const HALO_SCREEN_FRACTION = 0.42; // size on screen in mouse mode
 
-  // Breathing halo controls (4s cycle)
+  function enableMouseTracking(){
+    const onMove = (e) => {
+      if (e.touches && e.touches[0]) { mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; }
+      else { mouseX = e.clientX; mouseY = e.clientY; }
+    };
+    addEventListener('pointermove', onMove, {passive:true});
+    addEventListener('touchmove',  onMove, {passive:true});
+  }
+
+  // Breathing halo controls
   let __haloT0 = performance.now();
   const GLOW = {
     BLUR_MIN: 0,
@@ -169,12 +159,58 @@
     CLIP_PAD_PX: 140
   };
 
-  // Multi-face tracking
+  // Mouse mode render (no mirror)
+  function drawMouseHalo(){
+    if (!MOUSE_MODE || !headImg.complete) return;
+
+    octx.clearRect(0,0,ocan.width,ocan.height);
+
+    // ease to cursor
+    haloX = haloX + (mouseX - haloX) * MOUSE_EASE;
+    haloY = haloY + (mouseY - haloY) * MOUSE_EASE;
+
+    // breathing glow
+    const tNow = (performance.now() - __haloT0) * 0.001;
+    const s    = Math.sin(tNow * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
+    const blur = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
+    const alpha= GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
+
+    // size
+    const shortSide = Math.min(innerWidth, innerHeight);
+    const W = shortSide * HALO_SCREEN_FRACTION;
+    const H = W * (headImg.height / headImg.width);
+    const X = Math.round(haloX - W/2);
+    const Y = Math.round(haloY - H/2);
+
+    // draw
+    octx.save();
+    const pad = GLOW.CLIP_PAD_PX;
+    octx.beginPath();
+    octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
+    octx.clip();
+
+    octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
+    octx.shadowBlur  = blur;
+    octx.globalAlpha = 1.0;
+    octx.drawImage(headImg, X, Y, W, H);
+
+    octx.shadowBlur = 0;
+    octx.shadowColor = 'transparent';
+    octx.drawImage(headImg, X, Y, W, H);
+
+    octx.restore();
+
+    requestAnimationFrame(drawMouseHalo);
+  }
+
+  // Multi-face tracking (camera OK path)
   const HALO_MAX_FACES = 8;
   function matchRadiusPx(){ return Math.max(220, Math.min(innerWidth, innerHeight) * 0.08); }
   const TRACK_TTL_MS   = 450;
   let haloTracks = [];
   const nowMs = () => performance.now();
+  const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
+  const px   = v => Math.round(v);
 
   function matchTrack(ax, ay){
     const R = matchRadiusPx();
@@ -191,20 +227,15 @@
     haloTracks = haloTracks.filter(tr => (t - tr.lastSeen) < TRACK_TTL_MS);
   }
 
-  const lerp = (a,b,t)=> (a==null ? b : a + (b-a)*t);
-  const px   = v => Math.round(v);
-
   function drawHeads(lmsList){
     octx.clearRect(0,0,ocan.width,ocan.height);
     if(!lmsList || !lmsList.length || !headImg.complete) { pruneTracks(); return; }
 
-    // Breathing glow
     const tNow = (performance.now() - __haloT0) * 0.001;
     const s    = Math.sin(tNow * 2 * Math.PI * GLOW.SPEED_HZ) * 0.5 + 0.5;
     const blur = GLOW.BLUR_MIN  + (GLOW.BLUR_MAX  - GLOW.BLUR_MIN)  * s;
     const alpha= GLOW.ALPHA_MIN + (GLOW.ALPHA_MAX - GLOW.ALPHA_MIN) * s;
 
-    // Sort faces by apparent size
     const faces = lmsList
       .map(lm => {
         const L = lm[127], R = lm[356];
@@ -261,63 +292,69 @@
 
       const X = px(tr.x), Y = px(tr.y), W = px(tr.w), H = px(tr.h);
 
-      // --- Draw with counter-mirror so the logo itself is NOT flipped ---
-      // Canvas element is mirrored via CSS, so we flip the sprite back.
+      // Canvas element is mirrored via CSS (selfie),
+      // so flip sprite back so it reads correctly.
       octx.save();
-      // local clip (keeps glow contained)
       const pad = GLOW.CLIP_PAD_PX;
       octx.beginPath();
       octx.rect(X - pad, Y - pad, W + 2*pad, H + 2*pad);
       octx.clip();
 
-      // Move to image center, flip X, then draw centered
       octx.translate(X + W/2, 0);
       octx.scale(-1, 1);
 
-      // Glow pass
       octx.shadowColor = `rgba(255,255,255,${alpha.toFixed(3)})`;
       octx.shadowBlur  = blur;
       octx.globalAlpha = 1.0;
       octx.drawImage(headImg, -W/2, Y, W, H);
 
-      // Core pass
       octx.shadowBlur = 0;
       octx.shadowColor = 'transparent';
       octx.drawImage(headImg, -W/2, Y, W, H);
 
       octx.restore();
-      // --- end counter-mirror block ---
     });
 
     pruneTracks();
   }
 
-  function initFace(){
-    const faceMesh = new FaceMesh({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
-    faceMesh.setOptions({
-      maxNumFaces: 8,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.30,
-      minTrackingConfidence: 0.40
-    });
-    const cam = new Camera(webcam,{
-      onFrame: async()=>{ await faceMesh.send({ image: webcam }); },
-      width: 1280, height: 720
-    });
-    cam.start();
-    faceMesh.onResults((res)=>{
-      if(res.multiFaceLandmarks && res.multiFaceLandmarks.length){
-        drawHeads(res.multiFaceLandmarks);
-      }else{
-        octx.clearRect(0,0,ocan.width,ocan.height);
-      }
-    });
+  async function startCamera(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
+        audio:false
+      });
+      webcam.srcObject = stream; await webcam.play();
+
+      // Camera OK: hide overlay & button; use selfie mode transforms
+      overlay.classList.add('hidden');
+      startBtn.style.display='none';
+      webcam.style.display = '';
+      ocan.style.transform = 'scaleX(-1)';  // mirror canvas to match selfie
+      MOUSE_MODE = false;
+
+      initFace();
+    } catch(e){
+      // Camera denied/unavailable: mouse mode
+      overlay.classList.add('hidden');
+      startBtn.style.display='inline-block';
+
+      // Hide video entirely; un-mirror canvas for mouse mode
+      webcam.style.display = 'none';
+      ocan.style.transform = 'none';
+
+      // Start mouse-tracking halo
+      mouseX = innerWidth/2; mouseY = innerHeight/2;
+      haloX = mouseX; haloY = mouseY;
+      MOUSE_MODE = true;
+      enableMouseTracking();
+      resize();
+      requestAnimationFrame(drawMouseHalo);
+    }
   }
+
+  document.addEventListener('DOMContentLoaded', startCamera);
+  startBtn.addEventListener('click', startCamera);
   </script>
 </body>
 </html>
-
-</body>
-</html>
-
-
