@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>sayxit</title>
 
-    <!-- Dark/Light SVG favicons -->
+  <!-- Dark/Light SVG favicons -->
   <link rel="icon" type="image/svg+xml" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
 
@@ -22,7 +22,6 @@
   <link rel="apple-touch-icon" href="assets/apple-light-180.png" media="(prefers-color-scheme: dark)">
 
   <link rel="icon" type="image/x-icon" href="assets/favicon-dark.ico">
-
 
   <style>
     html, body {
@@ -98,7 +97,7 @@
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 75vw; /* adjustable size */
+      width: 75vw;
       aspect-ratio: 16 / 9;
       transform: translate(-50%, -50%);
       background: white;
@@ -160,7 +159,7 @@
     }
     .overlay.hidden { display: none; }
 
-    /* 🪶 SayXit logo — exactly as in index.html but clickable */
+    /* 🪶 SayXit logo */
     .logo {
       width: 200px;
       height: auto;
@@ -179,6 +178,20 @@
     }
 
     a { text-decoration: none; }
+
+    /* 📱 Make camera + rectangle vertical only on phones */
+    @media (max-width: 600px) and (orientation: portrait) {
+      .camera-bg {
+        width: 90vw;
+        aspect-ratio: 9 / 16;
+      }
+
+      #webcam,
+      #overlayCanvas {
+        width: 70vw;
+        aspect-ratio: 9 / 16;
+      }
+    }
   </style>
 </head>
 <body>
@@ -408,23 +421,4 @@
         maxNumFaces: 8,
         refineLandmarks: true,
         minDetectionConfidence: 0.30,
-        minTrackingConfidence: 0.40
-      });
-      const cam = new Camera(webcam,{
-        onFrame: async()=>{ await faceMesh.send({ image: webcam }); },
-        width: 1280, height: 720
-      });
-      cam.start();
-      faceMesh.onResults((res)=>{
-        if(res.multiFaceLandmarks && res.multiFaceLandmarks.length){
-          drawHeads(res.multiFaceLandmarks);
-        }else{
-          octx.clearRect(0,0,ocan.width,ocan.height);
-        }
-      });
-    }
-
-    document.addEventListener('DOMContentLoaded', startCamera);
-  </script>
-</body>
-</html>
+        minTrackingConfidence: 0.
