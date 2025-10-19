@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>sayxit</title>
+
+
+  <!-- Dark/Light SVG favicons -->
+  <link rel="icon" type="image/svg+xml" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
+
+  <!-- PNG fallbacks -->
+  <link rel="icon" type="image/png" sizes="32x32"  href="assets/favicon-dark-32.png"  media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="32x32"  href="assets/favicon-light-32.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-dark-192.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-light-192.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-dark-512.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-light-512.png" media="(prefers-color-scheme: dark)">
+
+  <!-- iOS home screen icons -->
+  <link rel="apple-touch-icon" href="assets/apple-dark-180.png"  media="(prefers-color-scheme: light)">
+  <link rel="apple-touch-icon" href="assets/apple-light-180.png" media="(prefers-color-scheme: dark)">
+
+  <link rel="icon" type="image/x-icon" href="assets/favicon-dark.ico">  
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Helvetica', sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .gradient-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -3;
+      pointer-events: none;
+      background: linear-gradient(221deg, #bcbcbc, #757575, #959595, #575757);
+      background-size: 1200% 1200%;
+      animation: AnimationName 100s ease infinite;
+    }
+
+    @keyframes AnimationName {
+      0% { background-position: 54% 0%; }
+      50% { background-position: 47% 100%; }
+      100% { background-position: 54% 0%; }
+    }
+
+    .texture-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      pointer-events: none;
+      background-image: url('5c75fafe-96ba-48e0-b025-1c8059330c07.jpeg');
+      background-size: cover;
+      background-position: center;
+      opacity: 0.3;
+      mix-blend-mode: soft-light;
+    }
+
+    .dotfield {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .dot {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background-color: white;
+      border-radius: 50%;
+      opacity: 0.05;
+      animation: dotGlow 6s ease-in-out infinite;
+    }
+
+    @keyframes dotGlow {
+      0%, 100% { opacity: 0.05; }
+      50% { opacity: 0.4; }
+    }
+
+    .overlay {
+      position: fixed;
+      top: 30px;
+      left: 30px;
+      z-index: 21;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+      color: white;
+    }
+
+    .logo {
+      width: 200px;
+      height: auto;
+      margin-bottom: 8px;
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      z-index: 21;
+      transition: opacity 0.3s ease;
+    }
+
+    .logo-white {
+      filter: drop-shadow(0 0 1px white);
+      opacity: 1;
+    }
+
+    .logo-black {
+      position: absolute;
+      top: 30px;
+      left: 30px;
+      width: 200px;
+      height: auto;
+      filter: drop-shadow(0 0 1px black);
+      z-index: 30;
+      display: none;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .tagline {
+      font-weight: normal;
+      font-size: 16px;
+      margin: 8px;
+      line-height: 1.2;
+      cursor: pointer;
+      filter: drop-shadow(0 0 1px white);
+      z-index: 21;
+      position: absolute;
+      top: 110px;
+      left: 30px;
+      white-space: nowrap;
+    }
+
+.social-links {
+  position: absolute;
+  top: 150px;
+  left: 30px;
+  display: flex;
+  gap: 10px;
+  z-index: 21;
+}
+
+.social-links img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.8;
+  transition: transform 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
+  filter: invert(1) brightness(2) drop-shadow(0 0 1px white);
+  cursor: pointer;
+}
+
+.social-links img:hover {
+  transform: scale(1.2);
+  opacity: 1;
+  filter: invert(1) brightness(3) drop-shadow(0 0 3px white);
+}
+
+
+
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+        "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.158.0/examples/jsm/loaders/GLTFLoader.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="gradient-bg"></div>
+  <div class="texture-layer"></div>
+  <div class="dotfield"></div>
+
+  <div class="overlay">
+    <img src="sayxit.png" alt="SayXit Logo" class="logo logo-white" />
+    <img src="sayxit-black.png" alt="SayXit Logo Black" class="logo logo-black" onclick="location.reload()" />
+    <h1 class="tagline" id="tagline">Become An Angel</h1>
+    <div class="social-links">
+  <a class="social" href="https://www.instagram.com/sayxit/" target="_blank" rel="noopener">
+    <img src="assets/instagram.svg" alt="Instagram">
+  </a>
+  <a class="social" href="https://www.tumblr.com/sayxit" target="_blank" rel="noopener">
+    <img src="assets/tumblr.svg" alt="Tumblr">
+  </a>
+  <a href="mailto:selim@sayxit.com" rel="noopener">
+    <img src="assets/email.svg" alt="Email">
+  </a>
+  <a class="social" href="https://www.tiktok.com/@sayxit" target="_blank" rel="noopener">
+    <img src="assets/tiktok.svg" alt="Tiktok">
+  </a>
+  <a class="social" href="https://www.youtube.com/@sayxxit" target="_blank" rel="noopener">
+    <img src="assets/youtube.svg" alt="YouTube">
+  </a>
+</div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+
+  <script>
+    // Background dot animation
+    const dotContainer = document.querySelector('.dotfield');
+    for (let i = 0; i < 20; i++) {
+      const dot = document.createElement('div');
+      dot.classList.add('dot');
+      dot.style.top = `${Math.random() * 100}%`;
+      dot.style.left = `${Math.random() * 100}%`;
+      dot.style.animationDelay = `${Math.random() * 10}s`;
+      dotContainer.appendChild(dot);
+    }
+
+    // ✅ Handle "Become An Angel" click with fresh URL to force new camera permission
+    document.getElementById('tagline').addEventListener('click', () => {
+      window.location.href = `angel.html?fresh=${Date.now()}`;
+    });
+  </script>
+</body>
+</html>
