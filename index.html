@@ -34,51 +34,11 @@
       display: block;
     }
 
-    .gradient-bg {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: -3;
-      pointer-events: none;
-      background: linear-gradient(221deg, #bcbcbc, #757575, #959595, #575757);
-      background-size: 1200% 1200%;
-      animation: AnimationName 100s ease infinite;
-    }
 
     @keyframes AnimationName {
       0% { background-position: 54% 0%; }
       50% { background-position: 47% 100%; }
       100% { background-position: 54% 0%; }
-    }
-
-
-
-    .dotfield {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: -1;
-      overflow: hidden;
-    }
-
-    .dot {
-      position: absolute;
-      width: 4px;
-      height: 4px;
-      background-color: white;
-      border-radius: 50%;
-      opacity: 0.05;
-      animation: dotGlow 6s ease-in-out infinite;
-    }
-
-    @keyframes dotGlow {
-      0%, 100% { opacity: 0.05; }
-      50% { opacity: 0.4; }
     }
 
     .overlay {
