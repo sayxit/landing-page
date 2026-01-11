@@ -33,7 +33,6 @@
       display: block;
     }
 
-
     @keyframes AnimationName {
       0% { background-position: 54% 0%; }
       50% { background-position: 47% 100%; }
@@ -49,7 +48,7 @@
       flex-direction: column;
       align-items: flex-start;
       text-align: left;
-      color: grey;
+      color: white;
     }
 
     .logo {
@@ -119,8 +118,6 @@
   filter: invert(1) brightness(3) drop-shadow(0 0 3px white);
 }
 
-
-
   </style>
 
   <script type="importmap">
@@ -133,9 +130,6 @@
   </script>
 </head>
 <body>
-  <div class="gradient-bg"></div>
-
-  <div class="dotfield"></div>
 
   <div class="overlay">
     <img src="sayxit.png" alt="SayXit Logo" class="logo logo-white" />
@@ -163,16 +157,6 @@
   <script type="module" src="main.js"></script>
 
   <script>
-    // Background dot animation
-    const dotContainer = document.querySelector('.dotfield');
-    for (let i = 0; i < 20; i++) {
-      const dot = document.createElement('div');
-      dot.classList.add('dot');
-      dot.style.top = `${Math.random() * 100}%`;
-      dot.style.left = `${Math.random() * 100}%`;
-      dot.style.animationDelay = `${Math.random() * 10}s`;
-      dotContainer.appendChild(dot);
-    }
 
     // ✅ Handle "Become An Angel" click with fresh URL to force new camera permission
     document.getElementById('tagline').addEventListener('click', () => {
