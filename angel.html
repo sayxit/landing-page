@@ -28,12 +28,7 @@
       height: 100%;
       overflow: hidden;
       font-family: 'Helvetica', sans-serif;
-    }
-
-    @keyframes bgShift {
-      0% { background-position: 54% 0%; }
-      50% { background-position: 47% 100%; }
-      100% { background-position: 54% 0%; }
+      background-color: #222;
     }
 
     .camera-bg {
@@ -51,16 +46,6 @@
       animation: breatheGlow 10s ease-in-out infinite;
     }
 
-    @keyframes breatheGlow {
-      0%, 100% {
-        box-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
-        opacity: 0.9;
-      }
-      50% {
-        box-shadow: 0 0 80px rgba(255, 255, 255, 1);
-        opacity: 1;
-      }
-    }
 
     #webcam {
       position: absolute;
@@ -155,16 +140,6 @@
     const ocan = document.getElementById('overlayCanvas');
     const octx = ocan.getContext('2d');
     const headImg = new Image(); headImg.src = 'assets/head_logo.png';
-
-    // Dots background
-    const dotContainer = document.querySelector('.dotfield');
-    for (let i = 0; i < 20; i++) {
-      const dot = document.createElement('div');
-      dot.classList.add('dot');
-      dot.style.top = `${Math.random() * 100}%`;
-      dot.style.left = `${Math.random() * 100}%`;
-      dot.style.animationDelay = `${Math.random() * 10}s`;
-      dotContainer.appendChild(dot);
     }
 
     let videoRect = { x: 0, y: 0, w: 0, h: 0 };
